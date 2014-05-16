@@ -144,7 +144,7 @@
             <enum>Qt::AutoText</enum>
            </property>
            <property name="pixmap">
-            <pixmap resource="src.qrc">:/ui/resources/yellow_light.png</pixmap>
+            <pixmap resource="../qrc/src.qrc">:/ui/resources/yellow_light.png</pixmap>
            </property>
            <property name="scaledContents">
             <bool>true</bool>
@@ -288,7 +288,7 @@
             <string>清空日志</string>
            </property>
            <property name="icon">
-            <iconset resource="src.qrc">
+            <iconset resource="../qrc/src.qrc">
              <normaloff>:/ui/resources/clipboard.png</normaloff>:/ui/resources/clipboard.png</iconset>
            </property>
            <property name="iconSize">
@@ -326,7 +326,7 @@
             <string>查询状态</string>
            </property>
            <property name="icon">
-            <iconset resource="src.qrc">
+            <iconset resource="../qrc/src.qrc">
              <normaloff>:/ui/resources/find_user.png</normaloff>:/ui/resources/find_user.png</iconset>
            </property>
            <property name="iconSize">
@@ -373,7 +373,7 @@
             <string>控制设备</string>
            </property>
            <property name="icon">
-            <iconset resource="src.qrc">
+            <iconset resource="../qrc/src.qrc">
              <normaloff>:/ui/resources/switch_off.png</normaloff>:/ui/resources/switch_off.png</iconset>
            </property>
            <property name="iconSize">
@@ -414,7 +414,7 @@
             <string>读取数据</string>
            </property>
            <property name="icon">
-            <iconset resource="src.qrc">
+            <iconset resource="../qrc/src.qrc">
              <normaloff>:/ui/resources/data_backup.png</normaloff>:/ui/resources/data_backup.png</iconset>
            </property>
            <property name="iconSize">
@@ -536,8 +536,9 @@
   </layout>
  </widget>
  <resources>
+  <include location="../qrc/src.qrc"/>
+  <include location="../qrc/src.qrc"/>
   <include location="src.qrc"/>
-  <include location="src_rc.qrc"/>
  </resources>
  <connections/>
 </ui>

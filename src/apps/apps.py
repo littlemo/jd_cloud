@@ -7,7 +7,7 @@ import httplib
 import json
 import sys
 from PyQt4 import QtGui, QtCore
-from apps_ui import Ui_JDSmartCloud_Apps
+from src.apps.apps_ui import Ui_JDSmartCloud_Apps
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -57,8 +57,20 @@ class SmartCloudApps(QtGui.QWidget):
         url = '/v1/device/%s/status' % self.feed_id
         headers_req = {'Host': address, 'JD-Key': self.access_key}
 
-        self.conn.request(method, url, headers=headers_req)
-        _res = self.conn.getresponse()
+        try:
+            self.conn.request(method, url, headers=headers_req)
+        except httplib.CannotSendRequest:
+            self.active_https()
+            print 'Reactive https connection!'
+            self.ui.pteLog.appendPlainText(u'断线重连...')
+            self.conn.request(method, url, headers=headers_req)
+
+        try:
+            _res = self.conn.getresponse()
+        except httplib.BadStatusLine:
+            print 'Err: https recv package!'
+            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
+            return False
 
         print _res.version, _res.status, _res.reason
         if _res.status is not 200:
@@ -96,7 +108,7 @@ class SmartCloudApps(QtGui.QWidget):
 
     def __is_alive(self):
         self.__get_alive_status()
-        self.ui.pteLog.appendPlainText('刷新完成:\t%d' % self.alive_status)
+        self.ui.pteLog.appendPlainText(u'刷新完成:\t%d' % self.alive_status)
         if self.alive_status == 1:
             self.ui.lStatusDisp.setPixmap(QtGui.QPixmap(_fromUtf8(":/ui/resources/green_light.png")))
             self.ui.pbControlDev.setEnabled(True)
@@ -110,7 +122,7 @@ class SmartCloudApps(QtGui.QWidget):
 
     def __read_data_slot(self):
         res = self.get_current_dev_all_stream()
-        self.ui.pteLog.appendPlainText('读取数据:\t%s' % str(res))
+        self.ui.pteLog.appendPlainText(u'读取数据:\t%s' % str(res))
 
     def get_current_dev_all_stream(self):
         host, port = self.address
@@ -145,7 +157,7 @@ class SmartCloudApps(QtGui.QWidget):
                         self.switch_status = item['current_value']
                     elif item['stream_id'] == 'temp':
                         self.ui.leTempDisp.setText(str(item['current_value']))
-                print self.switch_status
+                # print self.switch_status
                 if self.switch_status == 1:
                     s = 'on'
                     self.ui.pbControlDev.setChecked(True)
@@ -183,7 +195,7 @@ class SmartCloudApps(QtGui.QWidget):
         icon.addPixmap(QtGui.QPixmap(_fromUtf8(":/ui/resources/switch_%s.png" % s)),
                        QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.ui.pbControlDev.setIcon(icon)
-        self.ui.pteLog.appendPlainText('设备控制:\t' + str(res))
+        self.ui.pteLog.appendPlainText(u'设备控制:\t' + str(res))
 
     def control_dev(self, switch=1):
         host, port = self.address
@@ -204,8 +216,20 @@ class SmartCloudApps(QtGui.QWidget):
         body_json_req = json.dumps(body_req)
         print 'body => %s' % body_json_req
 
-        self.conn.request(method, url, headers=headers_req, body=body_json_req)
-        _res = self.conn.getresponse()
+        try:
+            self.conn.request(method, url, headers=headers_req, body=body_json_req)
+        except httplib.CannotSendRequest:
+            self.active_https()
+            print 'Reactive https connection!'
+            self.ui.pteLog.appendPlainText(u'断线重连...')
+            self.conn.request(method, url, headers=headers_req, body=body_json_req)
+
+        try:
+            _res = self.conn.getresponse()
+        except httplib.BadStatusLine:
+            print 'Err: https recv package!'
+            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
+            return False
 
         print _res.version, _res.status, _res.reason
         if _res.status != 200:
@@ -222,6 +246,9 @@ class SmartCloudApps(QtGui.QWidget):
             key = 'code'
             if int(body_json_rsp[key]) == 200:
                 self.switch_status = int(body_json_rsp['data']['switch'])
+            elif int(body_json_rsp[key]) == 2004:
+                self.__is_alive()
+                return False
             else:
                 print "body_json_rsp[%s] %d is not '200'" % (key, int(body_json_rsp[key]))
                 self.conn.close()
