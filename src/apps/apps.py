@@ -2,12 +2,12 @@
 
 __author__ = 'Moore.Huang'
 
-import time
 import httplib
 import json
 import sys
 from PyQt4 import QtGui, QtCore
 from src.apps.apps_ui import Ui_JDSmartCloud_Apps
+from src.http_server import HTTPServer
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -18,8 +18,7 @@ except AttributeError:
 
 class SmartCloudApps(QtGui.QWidget):
     def __init__(self,
-                 product_id='41',
-                 address=('apismart.jd.com', 443),
+                 address=('apismart.jd.com', httplib.HTTPS_PORT),
                  jd_key='iKvyNBTcB9eTDB1oqgBuxFtVI9iJB1jgBcVqHZXNGCpN19Hp',
                  parent=None):
         QtGui.QWidget.__init__(self, parent)
@@ -32,50 +31,28 @@ class SmartCloudApps(QtGui.QWidget):
         self.ui.leFeedID.textChanged.connect(self.__update_feed_id_slot)
         self.ui.leAccessKey.textChanged.connect(self.__update_access_key_slot)
 
+        self.host, self.port = address
+        self.jd_key = jd_key
+
         self.access_key = self.ui.leAccessKey.text()
         self.feed_id = self.ui.leFeedID.text()
 
-        self.product_id = product_id
-        self.address = address
-        self.jd_key = jd_key
-
-        self.conn = None
         self.alive_status = None
         self.switch_status = None
 
-        self.active_https()
-
-    def active_https(self):
-        host, port = self.address
-        self.conn = httplib.HTTPSConnection(host, port)
+        self.http_server = HTTPServer(address)
 
     def __get_alive_status(self):
-        host, port = self.address
-        address = '%s:%s' % (host, port)
-
-        method = 'GET'
         url = '/v1/device/%s/status' % self.feed_id
-        headers_req = {'Host': address, 'JD-Key': self.access_key}
+        headers_req = {'Host': self.host, 'JD-Key': self.access_key}
 
-        try:
-            self.conn.request(method, url, headers=headers_req)
-        except httplib.CannotSendRequest:
-            self.active_https()
-            print 'Reactive https connection!'
-            self.ui.pteLog.appendPlainText(u'断线重连...')
-            self.conn.request(method, url, headers=headers_req)
-
-        try:
-            _res = self.conn.getresponse()
-        except httplib.BadStatusLine:
-            print 'Err: https recv package!'
-            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
+        rc = self.http_server.run_https_req('GET', url, headers_req)
+        if rc is False:
             return False
 
-        print _res.version, _res.status, _res.reason
-        if _res.status is not 200:
-            print 'Err: HTTPS response.status [%s]' % _res.status
-            self.conn.close()
+        _res = self.http_server.get_response()
+        if _res is None:
+            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
             return False
 
         body_rsp = _res.read()
@@ -89,26 +66,22 @@ class SmartCloudApps(QtGui.QWidget):
                 self.alive_status = int(body_json_rsp['data']['status'])
             elif int(body_json_rsp[key]) == 3001:
                 self.alive_status = 0
+                self.http_server.disconnect_https()
+                return False
             else:
                 print "body_json_rsp[%s] %d is not '200'" % (key, int(body_json_rsp[key]))
-                self.conn.close()
+                self.__update_alive_pixmap()
+                self.http_server.disconnect_https()
                 return False
         except KeyError:
             print 'Can not find the key[%s]!' % key
-            self.conn.close()
+            self.http_server.disconnect_https()
             return False
 
+        self.http_server.disconnect_https()
         return True
 
-    def close_https(self):
-        if self.conn is not None:
-            self.conn.close()
-        else:
-            print 'the conn is None!'
-
-    def __is_alive(self):
-        self.__get_alive_status()
-        self.ui.pteLog.appendPlainText(u'刷新完成:\t%d' % self.alive_status)
+    def __update_alive_pixmap(self):
         if self.alive_status == 1:
             self.ui.lStatusDisp.setPixmap(QtGui.QPixmap(_fromUtf8(":/ui/resources/green_light.png")))
             self.ui.pbControlDev.setEnabled(True)
@@ -119,30 +92,32 @@ class SmartCloudApps(QtGui.QWidget):
             self.ui.pbControlDev.setEnabled(False)
             self.ui.pbReadData.setEnabled(False)
             return False
+        else:
+            print 'Err: alive_status is %d' % self.alive_status
+            return False
+
+    def __is_alive(self):
+        self.__get_alive_status()
+        self.ui.pteLog.appendPlainText(u'刷新完成:\t%d' % self.alive_status)
+        return self.__update_alive_pixmap()
 
     def __read_data_slot(self):
         res = self.get_current_dev_all_stream()
         self.ui.pteLog.appendPlainText(u'读取数据:\t%s' % str(res))
 
     def get_current_dev_all_stream(self):
-        host, port = self.address
-        address = '%s:%s' % (host, port)
-
-        method = 'GET'
         url = '/v1/feeds/%s/streams' % self.feed_id
-        headers_req = {'Host': address, 'JD-Key': self.access_key}
+        headers_req = {'Host': self.host, 'JD-Key': self.access_key}
 
-        self.conn.request(method, url, headers=headers_req)
-        _res = self.conn.getresponse()
-
-        print _res.version, _res.status, _res.reason
-        if _res.status is not 200:
-            print 'Err: HTTPS response.status [%s]' % _res.status
-            self.conn.close()
+        rc = self.http_server.run_https_req('GET', url, headers_req)
+        if rc is False:
             return False
 
-        # headers_rsp = _res.getheaders()
-        # print headers_rsp
+        _res = self.http_server.get_response()
+        if _res is None:
+            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
+            return False
+
         body_rsp = _res.read()
         body_json_rsp = json.loads(body_rsp)
         body_json_rsp_str = json.dumps(body_json_rsp, indent=4)
@@ -157,34 +132,20 @@ class SmartCloudApps(QtGui.QWidget):
                         self.switch_status = item['current_value']
                     elif item['stream_id'] == 'temp':
                         self.ui.leTempDisp.setText(str(item['current_value']))
-                # print self.switch_status
-                if self.switch_status == 1:
-                    s = 'on'
-                    self.ui.pbControlDev.setChecked(True)
-                else:
-                    s = 'off'
-                    self.ui.pbControlDev.setChecked(False)
-                icon = QtGui.QIcon()
-                icon.addPixmap(QtGui.QPixmap(_fromUtf8(":/ui/resources/switch_%s.png" % s)),
-                               QtGui.QIcon.Normal, QtGui.QIcon.Off)
-                self.ui.pbControlDev.setIcon(icon)
+                self.__update_control_dev()
             else:
                 print "body_json_rsp[%s] %d is not '200'" % (key, int(body_json_rsp[key]))
-                self.conn.close()
+                self.http_server.disconnect_https()
                 return False
         except KeyError:
             print 'Can not find the key[%s]!' % key
-            self.conn.close()
+            self.http_server.disconnect_https()
             return False
 
+        self.http_server.disconnect_https()
         return True
 
-    def __control_dev_slot(self, status):
-        if status is True:
-            res = self.control_dev(1)
-        else:
-            res = self.control_dev(0)
-
+    def __update_control_dev(self):
         if self.switch_status == 1:
             s = 'on'
             self.ui.pbControlDev.setChecked(True)
@@ -195,17 +156,17 @@ class SmartCloudApps(QtGui.QWidget):
         icon.addPixmap(QtGui.QPixmap(_fromUtf8(":/ui/resources/switch_%s.png" % s)),
                        QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.ui.pbControlDev.setIcon(icon)
+
+    def __control_dev_slot(self, status):
+        res = self.control_dev(int(status))
+        self.__update_control_dev()
         self.ui.pteLog.appendPlainText(u'设备控制:\t' + str(res))
 
     def control_dev(self, switch=1):
-        host, port = self.address
-        address = '%s:%s' % (host, port)
-        time_format = '%Y-%m-%dT%H:%M:%S+0800'
-        time_str = time.strftime(time_format, time.localtime())
+        time_str = self.http_server.get_time_str()
 
-        method = 'PUT'
         url = '/v1/feeds/%s' % self.feed_id
-        headers_req = {'Host': address, 'JD-Key': self.access_key}
+        headers_req = {'Host': self.host, 'JD-Key': self.access_key}
         body_req = [
             {
                 'stream_id': 'switch',
@@ -213,28 +174,16 @@ class SmartCloudApps(QtGui.QWidget):
                 'at': time_str
             }
         ]
-        body_json_req = json.dumps(body_req)
-        print 'body => %s' % body_json_req
+        body_req_str = json.dumps(body_req)
+        print 'body => %s' % body_req_str
 
-        try:
-            self.conn.request(method, url, headers=headers_req, body=body_json_req)
-        except httplib.CannotSendRequest:
-            self.active_https()
-            print 'Reactive https connection!'
-            self.ui.pteLog.appendPlainText(u'断线重连...')
-            self.conn.request(method, url, headers=headers_req, body=body_json_req)
-
-        try:
-            _res = self.conn.getresponse()
-        except httplib.BadStatusLine:
-            print 'Err: https recv package!'
-            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
+        rc = self.http_server.run_https_req('PUT', url, headers_req, body_req)
+        if rc is False:
             return False
 
-        print _res.version, _res.status, _res.reason
-        if _res.status != 200:
-            print 'Err: HTTPS response.status [%s]' % _res.status
-            self.conn.close()
+        _res = self.http_server.get_response()
+        if _res is None:
+            self.ui.pteLog.appendPlainText(u'获取响应包错误！')
             return False
 
         body_rsp = _res.read()
@@ -251,13 +200,14 @@ class SmartCloudApps(QtGui.QWidget):
                 return False
             else:
                 print "body_json_rsp[%s] %d is not '200'" % (key, int(body_json_rsp[key]))
-                self.conn.close()
+                self.http_server.disconnect_https()
                 return False
         except KeyError:
             print 'Can not find the key[%s]!' % key
-            self.conn.close()
+            self.http_server.disconnect_https()
             return False
 
+        self.http_server.disconnect_https()
         return True
 
     def __clear_log(self):
